@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Downloaded models and generated data (install.sh recreates these)
+models/
+assets/cache/
+.logs/
+
+# Personal configuration
+config/calibrations.yaml
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+.idea/

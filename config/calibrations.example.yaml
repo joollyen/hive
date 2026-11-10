@@ -1,0 +1,48 @@
+# HIVE calibrations — optional per-turn "lenses".
+#
+# Copy this file to config/calibrations.yaml to enable it. Without that file HIVE
+# is never calibrated, which is a valid setup.
+#
+# A calibration is a profile HIVE adopts for a single turn when the request is
+# squarely in one domain, and drops when the turn ends. It changes:
+#   spine     operating principles and register for that turn
+#   facts     grounded context injected alongside HIVE's own
+#   budget    how long an answer may be (it is spoken aloud)
+#   escalate  force the heavy model
+#   probes    which curiosity bank in persona.yaml the follow-up question uses
+# It never changes the voice, the permissions, or who is talking. HIVE's own
+# spine is always prepended.
+#
+# Routing (cognition/calibration.py): `strong` terms score 2, `weak` score 1, a
+# calibration needs 2 to engage, and the highest score wins. File order breaks
+# ties, so list the more concrete domain first.
+#
+# The author's own profiles are personal and are not included in this repository.
+# This is a generic example of the format.
+
+security:
+  label: SECURITY
+  spine: |
+    For this answer you are calibrated as a security study partner.
+    Supply method, tooling and the reasoning behind it. Never invent a command,
+    flag or path; if you are unsure, say so and name what would settle it.
+    Offensive techniques are discussed only for owned or authorized targets:
+    a home lab, TryHackMe, Hack The Box.
+  facts:
+    environment: >
+      Ubuntu on a single workstation with an NVIDIA GPU. Labs run in local VMs.
+  budget: "three or four sentences; a procedure may run longer, said as steps that can be followed by ear"
+  escalate: true
+  probes: curiosity.hackbot
+  route:
+    strong:
+      - nmap
+      - privilege escalation
+      - active directory
+      - kerberos
+      - metasploit
+    weak:
+      - exploit
+      - payload
+      - enumeration
+      - linux

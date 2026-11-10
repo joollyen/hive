@@ -1,0 +1,444 @@
+# HIVE prototype-1.0 — master configuration
+# Every latency number in here was chosen against a single budget:
+# user stops speaking -> first audio out of the speakers in under 800ms.
+
+[identity]
+name = "HIVE"
+expansion = "Hyper-Intelligent Voice Engine"
+operator = "Jay"
+
+[session]
+# HIVE is session-scoped by design. Closing the window ends the session and
+# triggers long-term consolidation. There is no daemon, nothing survives.
+consolidate_on_exit = true
+max_session_turns = 400
+# How long a second quit will wait for the first one's vault write before giving
+# up on it. Measured on this box, consolidation runs 9-57s; the transcript
+# itself is on disk within milliseconds of stop() starting, so this only ever
+# bounds the summary. See ui/app.py for the sessions that were lost to not
+# waiting at all.
+shutdown_wait_s = 180.0
+
+[wake]
+# Whisper mishears "HIVE" constantly. These are the variants seen in practice.
+# Tier 1 fires on its own. Tier 2 are real English words, so they only fire when
+# followed by at least one more word - otherwise "hi" alone would wake it forever.
+strong_variants = ["hive", "hyve", "hiv", "haive", "heive", "hives", "hivemind"]
+# Observed in real sessions: Whisper writes the digit "5", not the word "five".
+#
+# "h" is the short form — saying the letter is less effort than the word, and
+# measured here, Whisper writes a spoken "H" as exactly "H" (and renders
+# "aitch" as "H" too). It sits in the weak tier, so it only wakes when followed
+# by more speech: a stray "H" on its own is never a summons. Note that Whisper
+# hyphenates it onto short commands — "H, stop" comes back as "H-Stop" — which
+# detect_wake splits before matching.
+weak_variants   = ["high", "hi", "hive's", "i've", "five", "5", "hype", "thrive",
+                   "hi've", "hey", "life", "dive", "chive", "v", "h", "aitch",
+                   "h's", "each"]
+fuzzy_threshold = 86          # rapidfuzz ratio against strong variants
+followup_window_s = 15.0      # after HIVE replies, follow-ups need no wake word
+followup_extends = true       # each exchange resets the window
+# Whether the name on its own gets a spoken answer.
+#
+# Off. Saying "HIVE" and hearing "Still here" back is HIVE reading the screen
+# out to you — the visualizer has already brightened and the header already says
+# LISTENING by the time it starts speaking, and it lands over the top of you
+# beginning your actual sentence. Waking silently and opening the follow-up
+# window is the whole of what was wanted. "HIVE, are you there?" is a real
+# question and is still answered; this is only about the bare name.
+acknowledge = false
+
+[audio.input]
+# Logitech C922 reports 32kHz. Whisper and Silero both want 16k mono.
+device = "default"
+samplerate = 16000
+channels = 1
+blocksize = 512               # 32ms at 16k - matches Silero's window exactly
+gain = 1.0
+# Keep listening while HIVE talks, so "HIVE, stop" can actually reach it.
+#
+# The microphone used to be switched off for the whole time HIVE was speaking —
+# necessary, because otherwise it hears itself through the speakers and answers
+# itself in a loop that does not recover. The cost was that the one moment you
+# most want to interrupt was the one moment nothing was listening.
+#
+# With this on, the audio keeps flowing and the loop is broken further along:
+# the endpointer slices it short and drops anything not clearly louder than
+# HIVE's own voice, and the runtime only acts on a short, anchored stop phrase
+# that HIVE did not just say itself. Turn it off if you run loud open speakers
+# and find it cutting itself off; Esc and right-click still stop it either way.
+barge_in = true
+
+[audio.output]
+device = "default"
+samplerate = 24000            # Kokoro's native rate, no resampling on the hot path
+duck_while_listening = false
+
+[vad]
+model = "silero"
+threshold = 0.55              # speech probability
+min_speech_ms = 180           # ignore lip smacks and key clicks
+# How long a pause has to last before HIVE decides you have finished.
+#
+# This is the single knob that trades "it cuts me off mid-thought" against "it
+# takes a moment to come back", and it is set for the first of those. At 380ms —
+# what it was through v4 — an ordinary pause while you work out how to phrase the
+# rest of a sentence reads as the end of it, and the half you had not said yet
+# arrives as a second fragment with no wake word in front of it, so it is thrown
+# away. Three seconds is long enough to think in.
+#
+# What it costs, honestly: this is dead time added to EVERY request, so "HIVE,
+# open Chrome" now answers in a little over three seconds rather than half a
+# second. Nothing else got slower — the pipeline behind it is unchanged and
+# still under 500ms — this is HIVE waiting to be sure you are done. Drop it to
+# 800–1200 if you want the old snap back and are willing to be interrupted
+# occasionally; the adaptive rules in audio/vad.py shorten it slightly for a
+# short utterance with a confidently falling tail and lengthen it for a long one
+# either way.
+min_silence_ms = 3000
+speech_pad_ms = 180           # keep this much audio before/after, stops clipped words
+max_utterance_s = 30.0
+
+# Barge-in, while HIVE is the one talking. See audio.input.barge_in above.
+#
+# HIVE's own speech has no gap longer than its sentence pause, so it never
+# endpoints normally — the whole answer would arrive as one utterance long after
+# it mattered. So a separate detector runs instead, triggered by the microphone
+# level *rising* above HIVE's own: it starts recording where you start talking,
+# which is what puts your words at the front of the clip where the anchored stop
+# grammar can see them. Measured, that yields a clean "HIVE. Stop." rather than
+# a slice half-full of whatever HIVE was mid-sentence on.
+#
+# ratio  how much louder than HIVE-through-the-speakers you have to be.
+#        Lower it if it misses you; raise it if HIVE is transcribing itself.
+# window the longest interruption it will record before acting on it.
+barge_in_window_s = 2.5
+barge_in_ratio = 1.9
+barge_in_min_gap_s = 0.7      # at most one transcription per this while speaking
+
+[asr]
+model = "small.en"            # base.en is faster but drops technical vocabulary
+device = "cuda"
+compute_type = "int8_float16" # ~2x faster than float16, no measurable accuracy loss here
+beam_size = 1                 # greedy. beam search costs ~80ms for near-zero gain
+vad_filter = false            # we already did VAD, don't pay for it twice
+condition_on_previous_text = false   # prevents runaway repetition loops
+# Biases the decoder toward HIVE's actual working vocabulary.
+hotwords = "HIVE H Obsidian eJPT eCPPT CompTIA nmap Burp Suite BloodHound Impacket Cal Poly Pomona Claude ZipRecruiter Indeed Glassdoor LinkedIn help desk"
+# Biases the FIRST token, which is where the wake word sits — without some bias
+# the name comes back as "Hi" or "5" and the utterance is discarded.
+#
+# It must contain the name and NOTHING that resembles a command. Whisper
+# regurgitates its initial_prompt when handed noise, so an earlier version of
+# this line ("...HIVE, open Chrome. HIVE, make a note.") caused HIVE to
+# transcribe a command nobody spoke and launch Chrome on its own. Establish the
+# token, offer no verbs.
+#
+# "H" is in here as well as the name, and it earns its place: measured on this
+# box, without it a spoken "H, stop" comes back as the invented word "H-Stopper"
+# and "H, what time is it" is dropped by the confidence gate entirely. With it,
+# both transcribe cleanly. Still no verbs — that rule has not changed.
+initial_prompt = "HIVE. H. HIVE. Speaking to HIVE, or to H."
+# Confidence gates. A segment Whisper is not confident was speech gets dropped
+# rather than transcribed — fluent text invented from room noise is worse than
+# silence, because it can match an intent and execute something.
+no_speech_max = 0.60
+min_logprob = -1.0
+
+[tts]
+engine = "kokoro"
+# Blend, not a stock voice. Kokoro's style vectors are plain arrays, so a
+# weighted average of two is a third valid voice: bf_lily carries a younger,
+# lighter register and bf_emma keeps the composure that stops it sounding girlish.
+# Run `hive --voicelab` to hear the alternatives, or say "HIVE, switch to <name>".
+voice = "bf_lily:0.6 + bf_emma:0.4"
+speed = 0.98                  # just under neutral; 1.06 read as clipped and hurried
+lang = "en-gb"
+device = "cuda"               # falls back to CPU automatically if the CUDA EP won't load
+# Synthesis units are whole sentences wherever possible. These are CEILINGS, not
+# targets — a sentence is only broken when it exceeds one. Splitting mid-sentence
+# gives each fragment its own falling contour, which is what makes delivery sound
+# chippy, so v3 raised both: 100 chars meant almost every opening sentence got
+# broken at a comma. The smaller first budget still protects time-to-first-audio,
+# and the latency filler covers the extra ~80ms it costs.
+stream_clauses = true
+first_unit_chars = 140
+unit_chars = 420
+
+[tts.prosody]
+# Kokoro has no SSML, no emotion tags and no emphasis markup, and it ignores
+# capitals. Its entire prosodic input is punctuation — and its vocabulary keeps
+# only  ! " ( ) , . : ; ? — “ ” …  and deletes everything else, which is why a
+# hyphen used as a dash disappears along with the pause it was standing for.
+# hive/audio/prosody.py is the layer that acts on that. Everything here is a
+# knob rather than a constant because delivery can only honestly be tuned by
+# ear: `hive --voicelab` renders the same lines with the pass on and off.
+#
+# breathing: insert a boundary into clauses that run past a speakable length.
+#   Speakers phrase in units of roughly one and a half to three seconds and take
+#   a breath about every three; prose written to be read silently ignores that
+#   constantly, and the result is the single clearest "read by a machine" tell.
+breathing = true
+breath_max_words = 22
+# rate_span: how far the speaking rate may move between phrases, as a fraction.
+#   Utterance-initial phrases open slightly slower, continuations run a shade
+#   quicker, and the closing phrase stretches — phrase-final lengthening is the
+#   strongest boundary cue in human speech. 0.05 is about ±5%: audible as
+#   phrasing, not audible as a speed change. Set to 0 for a flat delivery.
+rate_span = 0.05
+
+[llm]
+host = "http://127.0.0.1:11434"
+# Two-tier. Fast stays resident; heavy is summoned and released.
+fast_model = "qwen3:1.7b"
+heavy_model = "qwen3:8b"
+fast_keep_alive = "30m"       # stays warm the whole session
+heavy_keep_alive = "4m"       # long enough to survive a pause mid-conversation,
+                              # short enough to give the VRAM back before you game
+think = false                 # Qwen3 reasoning traces are death for voice latency
+# Ceilings, not targets, and both were raised in v5. They were 220 and 900, which
+# is roughly four and fifteen spoken sentences — the heavy tier was being cut off
+# mid-explanation on exactly the questions it was summoned for. Length costs
+# nothing in time-to-first-audio (speech starts on clause one and generation
+# stays ahead of the playhead from there) and it is not wasted afterwards either:
+# everything spoken is transcribed into the session note, so a longer answer is
+# also a bigger deposit into long-term memory.
+fast_num_predict = 420
+heavy_num_predict = 2000
+temperature = 0.55
+# Escalate to the heavy model when any of these trip.
+#
+# Measured on this box, first token is 171ms on the 1.7B and 186ms on the 8B, so
+# escalation costs almost nothing in latency — it costs 5.2GB of VRAM for the
+# keep-alive window. The quality gap is large and immediate: asked what follows
+# the eJPT, the 1.7B says "review key concepts and practise problem-solving"
+# and the 8B says "the eCPPT". So the bar is deliberately low. What stays on the
+# fast tier is short social turns, acknowledgements and confirmations.
+escalate_on_words = 8
+escalate_keywords = ["explain", "why", "compare", "design", "plan", "walk me through",
+                     "write", "draft", "analyze", "analyse", "debug", "review",
+                     "summarize", "summarise", "how would", "how do i", "difference",
+                     "pros and cons", "should i", "recommend", "advice", "suggest",
+                     "what next", "focus on", "strategy", "approach", "best way",
+                     "worth it", "opinion", "think about", "help me", "which one",
+                     "trade off", "tradeoff", "better"]
+
+[latency]
+# If the pipeline hasn't produced audio by this point, play a cached filler so
+# the silence never reads as a hang. This single trick does more for the feeling
+# of aliveness than any amount of raw speed.
+filler_after_ms = 620
+target_first_audio_ms = 800
+warn_over_budget = true
+# Second safety net, after the filler. If a turn is still silent this long into
+# it, say something. Covers a stalled model, a blocking skill, an unresponsive
+# media player - anything that would otherwise read as a freeze.
+watchdog_s = 3.5
+
+[prefetch]
+# Slow Thinker (adapted from VoiceAgentRAG, 2026). While HIVE speaks, the user is
+# listening — several seconds of compute nobody is waiting on. Used to pre-load
+# the 8B model when the next turn looks likely to need it, which hides HIVE's
+# worst measured latency (~4s cold load). A wrong prediction costs VRAM for the
+# keep-alive window and nothing else.
+enabled = true
+cooldown_s = 45               # do not thrash a 5GB model in and out of VRAM
+
+[night]
+# Night Mode. Between these hours the terminal becomes the primary input channel
+# — typed requests are handled exactly as spoken ones — while HIVE keeps
+# answering out loud and narrating what it is doing. For the hours when speaking
+# is not an option but hearing still is.
+enabled = true
+start_hour = 22               # 22:00
+end_hour = 6                  # 06:00
+auto_open_terminal = true     # the pane is the engine at night; open it on entry
+keep_mic_live = true          # still listens; typing is preferred, not enforced
+narrate_steps = true          # say each step of a plan aloud as it happens
+announce_entry = true         # say so when the mode flips
+check_interval_s = 60
+
+[net]
+# HIVE online. Every version through v5 answered "find me articles on X" by
+# saying it could not, and that was true: there was no code path by which a
+# fetch could have happened. There is one now.
+#
+# What did NOT change, and is worth being precise about because it is the whole
+# basis on which this thing was built: the language model still runs on this
+# machine, the vault still never leaves the disk, and no prompt, transcript or
+# note is sent anywhere. What crosses the network is a search query and a page
+# request. Reading only — GET, no accounts, no logins, no forms, no posting.
+#
+# Turn `enabled` off and HIVE reverts exactly to its offline self: the research
+# and search intents fall back through to conversation, and it says plainly that
+# it cannot reach anything, which is what it used to say all the time.
+enabled = true
+timeout_s = 12.0              # hard ceiling per request; a query task only gets 30s
+max_page_bytes = 2000000      # capped as it arrives, not after
+max_results = 6
+status_ttl_s = 20.0           # how long an online/offline verdict is trusted for
+probe_urls = ["https://duckduckgo.com/", "https://one.one.one.one/"]
+# Tried in order; the first with results wins. Two of them, and the second is
+# not redundancy for its own sake: DuckDuckGo answers a burst of queries from
+# one address with an HTTP 202 and a select-all-the-ducks page — no error
+# status, no empty body, just a page with no results in it. A HIVE-Q query with
+# several research tasks in it trips that, which makes it a normal operating
+# condition rather than an edge case. Mojeek runs its own crawler rather than
+# reselling someone else's, so it is a genuinely independent second opinion, and
+# it tolerates an unattended client. It is second because its index is smaller.
+# If both refuse, HIVE says it was challenged — never that it found nothing.
+search_providers = ["duckduckgo", "mojeek"]
+
+[query]
+# HIVE-Q. A written list of tasks, run down one at a time in the background,
+# spoken as it goes, with every task logged to the vault as it settles.
+#
+# stall_after_s is the knob that decides what counts as stuck, and it measures
+# INACTIVITY, not duration — a ten-minute research task that is still streaming
+# sentences is working, and a thirty-second one that has gone silent is not. The
+# clock resets on any sign of life: a synthesis unit reaching the speakers, a
+# stopwatch mark, a state change, results coming back off the network.
+stall_after_s = 30.0
+# Python cannot kill a thread, so a stalled task is abandoned rather than
+# stopped: the speaker is interrupted, the task gets this long to unwind on its
+# own, and then the query ends rather than starting the next task on top of one
+# that never finished. Running two turns at once is the single thing the whole
+# runtime is arranged to prevent.
+unwind_grace_s = 20.0
+# An absolute ceiling per task, in seconds. 0 disables it, which is the default,
+# and that default is a real decision rather than laziness: a research task
+# measured at 107 seconds here was working the whole time — reading out four
+# papers it had actually gone and found — and a flat thirty-second cap would
+# have cut it off and filed it as incomplete. Set this if you would rather have
+# the guarantee than the long answers.
+max_task_s = 0.0
+gap_between_tasks_s = 1.2     # breathing room, and the window a live request lands in
+lock_wait_s = 120.0           # how long a task waits its turn behind live conversation
+pause_wait_s = 180.0          # how long the queue holds while Jay is talking
+announce_start = true         # "Three in the query. Working through them now."
+announce_end = true           # the closing report, including what went to incomplete
+narrate_incomplete = true     # say so out loud when one fails, rather than only logging
+autostart = false             # open HIVE-Q ready, but do not start running on its own
+
+[permissions]
+# Chosen by the operator: launch + vault writes run free, everything else asks.
+launch_apps = "allow"
+launch_urls = "allow"
+open_files = "allow"
+vault_read = "allow"
+vault_write = "allow"
+system_query = "confirm"
+shell_exec = "confirm"
+file_write_outside_vault = "confirm"
+# Read-only network requests: search, and fetching a page to read it.
+#
+# "allow" rather than "confirm", and the reason is structural rather than a
+# relaxation of standards. A query runs unattended by definition — that is what
+# it is for — so a confirmation prompt inside one is not a safety check, it is a
+# task that stalls for thirty seconds and then goes to the incomplete tab. The
+# actual containment is narrower than a prompt anyway and is in hive/net.py:
+# GET only, no credentials, hard timeouts, a byte cap, and refusal to connect to
+# any address that resolves inside this machine or network.
+network_request = "allow"
+destructive = "deny"          # never, regardless of confirmation
+
+[permissions.vault_roots]
+# vault_write is only "allow" inside these. Anywhere else falls to confirm.
+allowed = ["HIVE"]
+
+[memory]
+vault_path = "~/vault"            # set to your Obsidian vault (or any markdown folder)
+hive_folder = "HIVE"
+stm_max_turns = 40            # what stays verbatim in the prompt
+stm_summary_after = 24        # older turns get rolled into a running summary
+ltm_semantic_index = true
+consolidation_model = "heavy" # session summaries are worth the good model
+
+[memory.associations]
+# Associative recall. Indexes the names and technical terms the vault mentions,
+# with the dates they were seen on, so the current turn can be matched against
+# past ones without being asked to. Also tracks "open loops" — things applied
+# for, sent, signed up to — that have no recorded outcome.
+enabled = true
+# Folders outside HIVE/ worth indexing. Bare names are vault-relative, absolute
+# paths are taken as given. Indexed in place rather than copied, so there is one
+# copy of the truth and deleting a note in the vault still deletes the memory of it.
+extra_folders = [
+  # "todo",
+  # "projects",
+]
+max_files = 800
+
+[speculate]
+# Reading the terminal draft as it is typed. Warms the heavy model and renders
+# the tailored holding line before Enter is pressed, so the acknowledgement is
+# a cache hit and the 8B's cold load happens during typing rather than after it.
+# Deliberately does NOT generate the answer early — see cognition/speculate.py.
+enabled = true
+debounce_ms = 220             # keystrokes coalesce into work at the pauses
+min_gap_ms = 800              # floor between two speculative synthesis runs
+
+[calibration]
+# VOSS and HackBot as lenses HIVE adopts for a turn. Profiles and the routing
+# vocabulary live in config/calibrations.yaml. Silent by design: the only trace
+# is one line in the terminal pane.
+enabled = true
+min_score = 2                 # strong terms score 2, weak score 1
+hold_turns = 2                # follow-ups a calibration survives without a keyword
+
+[curiosity]
+# Follow-up questions after substantive turns. Never after an instruction, never
+# twice running, never about a topic already asked about this session. See
+# cognition/curiosity.py for the full gate list — the restraint is the feature.
+enabled = true
+min_turns_between = 2         # turns that must pass between two probes
+min_words = 6                 # below this the turn is a command, not a subject
+
+[clip]
+# Pasted material. A block copied in from somewhere else is held as a quoted
+# source and handed to the model with every turn until it is dropped, rather
+# than shoved through the command line as though it were something Jay said.
+# See hive/clip.py for why those are different things.
+max_held = 3                  # clippings kept at once; oldest falls off
+max_chars = 6000              # per clipping; the overflow is cut and declared
+max_context_chars = 12000     # across all of them, so the prompt cannot run away
+min_words = 40                # a single-line paste this long is a source, not a line
+escalate = true               # a held clipping earns the heavy model
+
+[ui]
+width = 520
+height = 720
+frameless = true
+always_on_top = false
+opacity = 1.0                 # Wayland ignores per-window opacity; leave at 1.0 there
+fps_cap = 60
+spectrum_bins = 128           # slit-scan column count
+glyph_stream_rows = 14
+
+[status]
+# The status briefing: "HIVE, can you give me a current status update".
+#
+# These are *authored values*, not readings. Nothing in HIVE counts failures or
+# watches a live feed — there is no incident tracker behind this — so the numbers
+# say what is set here and nothing more. That is deliberate rather than
+# unfinished: the objective hemisphere's whole job is to keep HIVE from asserting
+# things it cannot check, and a count invented to fill a sentence would be
+# exactly that. Edit them as the picture changes.
+#
+# The wording lives in `status:` in persona.yaml. See hive/status.py for why the
+# paths below are printed rather than spoken.
+enabled = true
+
+# ISO 8601. Spoken as "Wednesday, September 23rd at 6:41 PM" — the weekday is
+# derived from the date, so the two can never disagree. Blank means no briefing
+# has been given yet, and the wording opens on the state instead.
+last_update = "2026-09-23T18:41"
+
+state = "Stable (recovered)"   # spoken verbatim; keep it to a few words
+critical = 2                   # pluralised on the way out, so 1 reads correctly
+low_severity = 4
+
+# Printed in the HIVE terminal, never read aloud. Clear both to drop the closing
+# line rather than have HIVE point at somewhere it has not been told about.
+livefeed = "/hive/database/livefeed/"
+errorlog = "/hive/database/entries/errorlog/"

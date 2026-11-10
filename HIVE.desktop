@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=HIVE
+GenericName=Hyper-Intelligent Voice Engine
+Comment=Local voice assistant. Speak while it is open; closing it ends the session.
+Exec=@HIVE_DIR@/run.sh
+Path=@HIVE_DIR@
+Icon=@HIVE_DIR@/assets/hive.svg
+Terminal=false
+Categories=Utility;
+Keywords=voice;assistant;hive;jarvis;
+StartupNotify=true
+StartupWMClass=hive
+SingleMainWindow=true

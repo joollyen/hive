@@ -1,0 +1,237 @@
+# What "open X" resolves to.
+#
+# Two layers. This file holds explicit aliases for things Jay actually says, with
+# the phrasings a person uses out loud ("the browser", "my vault", "a new doc")
+# rather than the names in the app menu. Anything not listed here falls through to
+# a runtime scan of every .desktop file on the system, fuzzy-matched on Name.
+# So this file does not need to be exhaustive — it needs to be right about the
+# twenty things that get opened every day.
+
+browsers:
+  default: chrome
+  chrome:
+    exec: ["google-chrome-stable"]
+    new_window: ["google-chrome-stable", "--new-window"]
+    app_mode: ["google-chrome-stable", "--app={url}"]
+  firefox:
+    exec: ["firefox"]
+    new_window: ["firefox", "--new-window"]
+
+apps:
+  chrome:
+    aliases: ["chrome", "google chrome", "browser", "the browser", "web browser"]
+    desktop: "google-chrome.desktop"
+    exec: ["google-chrome-stable"]
+    new_window: ["google-chrome-stable", "--new-window"]
+  firefox:
+    aliases: ["firefox", "fire fox", "mozilla"]
+    exec: ["firefox"]
+    new_window: ["firefox", "--new-window"]
+  tor:
+    aliases: ["tor", "tor browser", "onion browser"]
+    desktop: "start-tor-browser.desktop"
+  vscode:
+    aliases: ["vs code", "vscode", "visual studio code", "code", "the editor", "my editor"]
+    exec: ["code"]
+    new_window: ["code", "--new-window"]
+  obsidian:
+    aliases: ["obsidian", "my vault", "the vault", "my notes", "notes app"]
+    desktop: "md.obsidian.Obsidian.desktop"
+    exec: ["flatpak", "run", "md.obsidian.Obsidian"]
+  claude_desktop:
+    aliases: ["claude desktop", "claude app", "the claude app"]
+    desktop: "com.anthropic.Claude.desktop"
+  terminal:
+    aliases: ["terminal", "the terminal", "console", "shell", "ptyxis", "command line"]
+    desktop: "org.gnome.Ptyxis.desktop"
+    exec: ["ptyxis"]
+  files:
+    aliases: ["files", "file manager", "nautilus", "file browser", "explorer"]
+    desktop: "org.gnome.Nautilus.desktop"
+    exec: ["nautilus"]
+  spotify:
+    aliases: ["spotify", "music", "my music"]
+    exec: ["spotify"]
+  obs:
+    aliases: ["obs", "obs studio", "streaming", "recorder"]
+    desktop: "com.obsproject.Studio.desktop"
+  flameshot:
+    aliases: ["flameshot", "screenshot", "screen shot", "snip", "capture"]
+    desktop: "org.flameshot.Flameshot.desktop"
+    exec: ["flameshot", "gui"]
+  btop:
+    aliases: ["btop", "system monitor", "resource monitor", "task manager", "top"]
+    desktop: "btop.desktop"
+  calculator:
+    aliases: ["calculator", "calc"]
+    desktop: "org.gnome.Calculator.desktop"
+  texteditor:
+    aliases: ["text editor", "gedit", "notepad"]
+    desktop: "org.gnome.TextEditor.desktop"
+  settings:
+    aliases: ["settings", "system settings", "preferences", "control panel"]
+    desktop: "org.gnome.Settings.desktop"
+  vpn:
+    aliases: ["vpn", "proton vpn", "protonvpn"]
+    desktop: "proton.vpn.app.gtk.desktop"
+  steam:
+    aliases: ["steam", "my games", "games"]
+    desktop: "steam.desktop"
+  vlc:
+    aliases: ["vlc", "video player", "media player"]
+    desktop: "vlc.desktop"
+  libreoffice:
+    aliases: ["libreoffice", "libre office", "office"]
+    desktop: "libreoffice-startcenter.desktop"
+
+# Spoken-name -> URL. This is the "open a new google doc for me" path, and the
+# .new shortcuts matter: they create the document directly instead of landing on
+# a file list that then needs a click.
+web:
+  google_doc:
+    aliases: ["google doc", "google docs", "new doc", "a doc", "a document",
+              "new document", "word doc", "docs"]
+    url: "https://docs.new"
+  google_sheet:
+    aliases: ["google sheet", "google sheets", "spreadsheet", "new sheet", "excel"]
+    url: "https://sheets.new"
+  google_slides:
+    aliases: ["google slides", "slides", "presentation", "powerpoint", "slide deck"]
+    url: "https://slides.new"
+  claude:
+    aliases: ["claude", "new claude chat", "claude chat", "a new claude",
+              "claude conversation"]
+    url: "https://claude.ai/new"
+  gmail:
+    aliases: ["gmail", "my email", "email", "mail", "inbox"]
+    url: "https://mail.google.com"
+  calendar:
+    aliases: ["calendar", "my calendar", "google calendar", "my schedule", "schedule"]
+    url: "https://calendar.google.com"
+  drive:
+    aliases: ["drive", "google drive", "my drive", "cloud storage"]
+    url: "https://drive.google.com"
+  github:
+    aliases: ["github", "git hub", "my repos", "repositories"]
+    url: "https://github.com"
+  chatgpt:
+    aliases: ["chat gpt", "chatgpt", "open ai", "openai"]
+    url: "https://chatgpt.com"
+  youtube:
+    aliases: ["youtube", "you tube"]
+    url: "https://youtube.com"
+  tryhackme:
+    aliases: ["try hack me", "tryhackme", "thm"]
+    url: "https://tryhackme.com/dashboard"
+  hackthebox:
+    aliases: ["hack the box", "hackthebox", "htb"]
+    url: "https://app.hackthebox.com"
+  canvas:
+    aliases: ["canvas", "my classes", "coursework", "cal poly", "cpp portal", "broncodirect"]
+    url: "https://cpp.instructure.com"
+  linkedin:
+    aliases: ["linked in", "linkedin"]
+    url: "https://linkedin.com/feed"
+  exploitdb:
+    aliases: ["exploit db", "exploitdb", "exploit database"]
+    url: "https://www.exploit-db.com"
+  cve:
+    aliases: ["cve", "mitre", "cve database"]
+    url: "https://cve.mitre.org"
+
+# --- searchable sites -------------------------------------------------------
+# "open YouTube and type X into the search bar" resolves here. The spoken
+# aliases live in hive/cognition/intents.py (_SEARCH_SITES) because the grammar
+# has to match them; this file holds where they point, because that is the half
+# that changes when a site reorganises its URLs.
+#
+# `{q}` is URL-encoded. `read: true` means the results are worth speaking back —
+# a shopping or reference search where the answer is the list. `read: false`
+# means open the page and stop talking: reading six video titles aloud to
+# someone who asked for a browser tab is noise, not service.
+#
+# `domain` is what a `site:` search is restricted to. Every large retailer
+# refuses an unattended client — Best Buy answers a plain fetch with a bot
+# check, not a product list — so prices are read off the search index and the
+# retailer's own page is opened alongside for stock and delivery.
+search_sites:
+  youtube:
+    aliases: ["youtube", "you tube"]
+    url: "https://www.youtube.com/results?search_query={q}"
+    domain: "youtube.com"
+    read: false
+  bestbuy:
+    aliases: ["best buy", "bestbuy"]
+    url: "https://www.bestbuy.com/site/searchpage.jsp?st={q}"
+    domain: "bestbuy.com"
+    read: true
+  amazon:
+    aliases: ["amazon"]
+    url: "https://www.amazon.com/s?k={q}"
+    domain: "amazon.com"
+    read: true
+  newegg:
+    aliases: ["newegg", "new egg"]
+    url: "https://www.newegg.com/p/pl?d={q}"
+    domain: "newegg.com"
+    read: true
+  ebay:
+    aliases: ["ebay", "e bay"]
+    url: "https://www.ebay.com/sch/i.html?_nkw={q}"
+    domain: "ebay.com"
+    read: true
+  walmart:
+    aliases: ["walmart", "wal mart"]
+    url: "https://www.walmart.com/search?q={q}"
+    domain: "walmart.com"
+    read: true
+  microcenter:
+    aliases: ["micro center", "microcenter"]
+    url: "https://www.microcenter.com/search/search_results.aspx?Ntt={q}"
+    domain: "microcenter.com"
+    read: true
+  google:
+    aliases: ["google"]
+    url: "https://www.google.com/search?q={q}"
+    domain: ""
+    read: false
+  wikipedia:
+    aliases: ["wikipedia"]
+    url: "https://en.wikipedia.org/w/index.php?search={q}"
+    domain: "wikipedia.org"
+    read: true
+  reddit:
+    aliases: ["reddit"]
+    url: "https://www.reddit.com/search/?q={q}"
+    domain: "reddit.com"
+    read: true
+  github:
+    aliases: ["github", "git hub"]
+    url: "https://github.com/search?q={q}&type=repositories"
+    domain: "github.com"
+    read: true
+  stackoverflow:
+    aliases: ["stack overflow", "stackoverflow"]
+    url: "https://stackoverflow.com/search?q={q}"
+    domain: "stackoverflow.com"
+    read: true
+  arxiv:
+    aliases: ["arxiv", "archive x"]
+    url: "https://arxiv.org/abs/?searchtype=all&query={q}"
+    domain: "arxiv.org"
+    read: true
+  scholar:
+    aliases: ["google scholar", "scholar"]
+    url: "https://scholar.google.com/scholar?q={q}"
+    domain: ""
+    read: false
+  hackernews:
+    aliases: ["hacker news"]
+    url: "https://hn.algolia.com/?q={q}"
+    domain: "news.ycombinator.com"
+    read: true
+  exploitdb:
+    aliases: ["exploit db", "exploitdb"]
+    url: "https://www.exploit-db.com/search?q={q}"
+    domain: "exploit-db.com"
+    read: true

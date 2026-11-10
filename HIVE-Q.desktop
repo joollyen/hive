@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=HIVE-Q
+GenericName=HIVE Query
+# HIVE-Q is a window of HIVE, not a second program. Launching this starts HIVE
+# with the query editor already open; if HIVE is already running, use Ctrl+Shift+Q
+# in its window instead — a second process would load Whisper and Kokoro again
+# and fight the first one for the microphone.
+Comment=Write a list of tasks; HIVE works down it in the background and logs each one.
+Exec=@HIVE_DIR@/run.sh --query
+Path=@HIVE_DIR@
+Icon=@HIVE_DIR@/assets/hive.svg
+Terminal=false
+Categories=Utility;
+Keywords=queue;query;tasks;hive;batch;
+StartupNotify=true
+StartupWMClass=hive
+SingleMainWindow=true

@@ -1,0 +1,42 @@
+# HIVE prototype-1.0 — runtime dependencies
+# Deliberately PyTorch-free. The whole ML stack runs on CTranslate2 + ONNX Runtime,
+# which saves ~3GB of install and roughly 4 seconds of cold import time.
+#
+# !! READ THIS BEFORE EDITING !!
+# Two dependency hazards on this stack, both of which produce a working-looking
+# install that fails only at inference time. install.sh handles both; if you ever
+# install by hand, reproduce its ordering.
+#
+#   1. kokoro-onnx depends on `onnxruntime` (CPU). Installed alongside
+#      `onnxruntime-gpu` it unpacks into the SAME onnxruntime/ directory and the
+#      CPU core library wins, so CUDAExecutionProvider silently disappears.
+#      Fix: install kokoro-onnx first, then force onnxruntime-gpu in last.
+#
+#   2. Do NOT pin nvidia-cudnn-cu12. onnxruntime-gpu 1.28 is built against CUDA 13
+#      and pulls nvidia-cudnn-cu13. Both packages write libcudnn*.so.9 into the
+#      same nvidia/cudnn/lib directory, producing a half-9.24 half-9.20 file set
+#      and CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH on the first ConvTranspose.
+#      cu13 alone serves both ORT and CTranslate2 — verified on this box.
+
+# --- core ---
+numpy>=1.26,<2.3
+sounddevice>=0.4.7          # PortAudio capture/playback (libportaudio2 already present)
+soundfile>=0.12.1           # WAV encode/decode for the phrase cache
+httpx>=0.27                 # async streaming client for Ollama
+PyYAML>=6.0
+rapidfuzz>=3.9              # fuzzy spoken-name -> desktop-entry matching
+platformdirs>=4.2
+
+# --- UI ---
+PySide6>=6.7                # Qt Quick + QML + ShaderEffect
+
+# --- ASR ---
+faster-whisper>=1.0.3       # CTranslate2 Whisper, no torch
+
+# --- TTS ---
+kokoro-onnx>=0.4.0
+misaki[en]>=0.7.0           # grapheme->phoneme, dictionary-first
+espeakng-loader>=0.2.0      # bundles libespeak-ng so no apt/sudo is needed
+
+# onnxruntime-gpu is installed by install.sh AFTER everything above. Leaving it
+# out of this file is deliberate — see hazard 1.
